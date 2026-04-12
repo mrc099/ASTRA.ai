@@ -5,7 +5,6 @@ export async function POST(req: NextRequest) {
     const { messages } = await req.json()
     const lastMessage = messages[messages.length - 1].content
 
-    // ── 1. Google Search via Serper ───────────────────────────────────
     let searchContext = ''
     const serperKey = process.env.SERPER_API_KEY
     if (serperKey) {
@@ -37,11 +36,10 @@ export async function POST(req: NextRequest) {
     const systemPrompt = `You are ASTRA, a free AI assistant for students in India especially Hyderabad. Today is ${new Date().toDateString()}.
 You have access to LIVE Google search results. Use them to answer accurately.
 NEVER say "check Google" — always give a direct answer using the search data.
-NEVER use your old training data for current facts like politicians, results, news.
 LIVE GOOGLE SEARCH DATA:
 ${searchContext || 'No search results available for this query.'}`
 
-    // ── 2. Try OpenRouter (GPT-3.5-turbo) ────────────────────────────
+    // Try OpenRouter first
     const openrouterKey = process.env.OPENROUTER_API_KEY
     if (openrouterKey) {
       try {
@@ -62,48 +60,44 @@ ${searchContext || 'No search results available for this query.'}`
           }),
         })
         const gptData = await gptRes.json()
+        console.log('OpenRouter response:', JSON.stringify(gptData))
         const reply = gptData.choices?.[0]?.message?.content
         if (reply) return NextResponse.json({ reply })
-        console.error('OpenRouter no reply:', JSON.stringify(gptData))
       } catch (e) {
         console.error('OpenRouter error:', e)
       }
     }
 
-    // ── 3. Fallback → Gemini 2.0 Flash ───────────────────────────────
+    // Fallback to Gemini
     const geminiKey = process.env.GEMINI_API_KEY
     if (geminiKey) {
-      const geminiRes = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [
-              {
+      try {
+        const geminiRes = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{
                 role: 'user',
                 parts: [{ text: systemPrompt + '\n\nUser: ' + lastMessage }],
-              },
-            ],
-          }),
-        }
-      )
-      const geminiData = await geminiRes.json()
-      const reply = geminiData.candidates?.[0]?.content?.parts?.[0]?.text
-      if (reply) return NextResponse.json({ reply })
-      console.error('Gemini error:', JSON.stringify(geminiData))
+              }],
+            }),
+          }
+        )
+        const geminiData = await geminiRes.json()
+        console.log('Gemini response:', JSON.stringify(geminiData))
+        const reply = geminiData.candidates?.[0]?.content?.parts?.[0]?.text
+        if (reply) return NextResponse.json({ reply })
+      } catch (e) {
+        console.error('Gemini error:', e)
+      }
     }
 
-    // ── 4. All APIs failed ────────────────────────────────────────────
-    return NextResponse.json({
-      reply: 'ASTRA is temporarily unavailable. Please try again in a moment.'
-    })
+    return NextResponse.json({ reply: 'ASTRA is temporarily unavailable. Please try again.' })
 
   } catch (error) {
     console.error('Route error:', error)
-    return NextResponse.json(
-      { reply: 'Something went wrong. Please try again.' },
-      { status: 500 }
-    )
+    return NextResponse.json({ reply: 'Something went wrong. Please try again.' }, { status: 500 })
   }
 }
