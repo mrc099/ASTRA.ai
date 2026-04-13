@@ -6,7 +6,7 @@ export async function POST(req: NextRequest) {
     const lastMessage = messages[messages.length - 1].content
     let searchContext = ''
 
-    // 1. Attempt Search
+    // 1. SEARCH FOR ANSWERS (SERPER API)
     try {
       const serperRes = await fetch('https://google.serper.dev/search', {
         method: 'POST',
@@ -26,11 +26,11 @@ export async function POST(req: NextRequest) {
           })
         }
       }
-    } catch (searchError) {
-      console.error("Search failed, continuing without it:", searchError)
+    } catch (e) {
+      console.log("Search skipped.")
     }
 
-    // 2. Call OpenRouter
+    // 2. TALK TO AI (OPENROUTER)
     const gptRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -53,17 +53,13 @@ export async function POST(req: NextRequest) {
 
     const gptData = await gptRes.json()
     
-    // Check if the API actually returned a message
-    if (gptData.choices && gptData.choices[0] && gptData.choices[0].message) {
+    if (gptData.choices && gptData.choices[0]) {
       return NextResponse.json({ reply: gptData.choices[0].message.content })
     } else {
-      // This helps us see the error in the Vercel logs
-      console.error("OpenRouter Error Details:", gptData)
-      return NextResponse.json({ reply: "API Error: The AI service is currently unresponsive." }, { status: 500 })
+      return NextResponse.json({ reply: "I am having trouble connecting to my brain. Please check the API key." })
     }
 
   } catch (error) {
-    console.error("Critical Route Error:", error)
-    return NextResponse.json({ reply: "Connection Error: Please check your internet or API keys." }, { status: 500 })
+    return NextResponse.json({ reply: "I am offline right now. Try again in a moment." })
   }
 }
